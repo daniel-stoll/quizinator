@@ -5,6 +5,7 @@ import { Server, Socket } from "socket.io";
 import cors from "cors";
 import { promises as fs } from "fs";
 import { gameRouter } from "./game";
+import { lobbyRouter, registerLobbySocket } from "./lobby";
 
 interface Answer {
   text: string;
@@ -41,6 +42,7 @@ app.use(express.json());
 app.use(express.static(publicDir));
 
 app.use("/game", gameRouter);
+app.use("/lobby", lobbyRouter);
 
 app.use((req, _res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
@@ -145,6 +147,8 @@ io.on("connection", (socket: Socket) => {
     console.log(`Client disconnected: ${socket.id}`);
   });
 });
+
+registerLobbySocket(io);
 
 httpServer.listen(PORT, () => {
   console.log(`Server is listening on port ${PORT}`);
