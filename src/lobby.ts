@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { randomUUID } from "crypto";
-import { Server, Socket } from "socket.io";
+import { Namespace, Server, Socket } from "socket.io";
 
 interface LobbyUser {
   id: string;
@@ -39,45 +39,73 @@ router.get("/:id", (req, res: any) => {
 });
 
 function registerLobbySocket(io: Server) {
-  io.on("connection", (socket: Socket) => {
-    // join-lobby: { lobbyId, name }
-    socket.on("join-lobby", ({ lobbyId, name }: { lobbyId: string; name: string }) => {
+  const lobbyIo = io.of("/lobby");
+
+  lobbyIo.on("connection", (socket: Socket) => {
+    socket.on("watch-lobby", ({ lobbyId }: { lobbyId: string }) => {
       const lobby = lobbies.get(lobbyId);
       if (!lobby) {
-        socket.emit("error", { message: "Lobby not found" });
+        socket.emit("lobby:error", { message: "Lobby not found" });
         return;
       }
 
-      const user: LobbyUser = { id: socket.id, name };
+      socket.join(lobbyId);
+      emitLobbyUpdate(lobbyIo, lobbyId);
+    });
+
+    // join-lobby: { lobbyId, name }
+    socket.on("join-lobby", ({ lobbyId, name }: { lobbyId: string; name?: string }) => {
+      const lobby = lobbies.get(lobbyId);
+      if (!lobby) {
+        socket.emit("lobby:error", { message: "Lobby not found" });
+        return;
+      }
+
+      const user: LobbyUser = { id: socket.id, name: name || "Player" };
+      lobby.users = lobby.users.filter((u) => u.id !== socket.id);
       lobby.users.push(user);
 
       socket.join(lobbyId);
-      io.to(lobbyId).emit("user-joined", { user, users: lobby.users });
-      console.log(`[Lobby] ${name} (${socket.id}) joined lobby ${lobbyId}`);
+      lobbyIo.to(lobbyId).emit("user-joined", { user, users: lobby.users });
+      emitLobbyUpdate(lobbyIo, lobbyId);
+      console.log(`[Lobby] ${user.name} (${socket.id}) joined lobby ${lobbyId}`);
     });
 
     // leave-lobby: { lobbyId }
     socket.on("leave-lobby", ({ lobbyId }: { lobbyId: string }) => {
-      removUserFromLobby(io, socket, lobbyId);
+      removeUserFromLobby(lobbyIo, socket, lobbyId);
     });
 
     socket.on("disconnecting", () => {
       for (const room of socket.rooms) {
         if (lobbies.has(room)) {
-          removUserFromLobby(io, socket, room);
+          removeUserFromLobby(lobbyIo, socket, room);
         }
       }
     });
   });
 }
 
-function removUserFromLobby(io: Server, socket: Socket, lobbyId: string) {
+function emitLobbyUpdate(io: Namespace, lobbyId: string) {
+  const lobby = lobbies.get(lobbyId);
+  if (!lobby) return;
+
+  io.to(lobbyId).emit("lobby:update", {
+    lobbyId,
+    quizId: lobby.quizId,
+    players: lobby.users.length,
+    users: lobby.users,
+  });
+}
+
+function removeUserFromLobby(io: Namespace, socket: Socket, lobbyId: string) {
   const lobby = lobbies.get(lobbyId);
   if (!lobby) return;
 
   lobby.users = lobby.users.filter((u) => u.id !== socket.id);
   socket.leave(lobbyId);
   io.to(lobbyId).emit("user-left", { userId: socket.id, users: lobby.users });
+  emitLobbyUpdate(io, lobbyId);
   console.log(`[Lobby] ${socket.id} left lobby ${lobbyId}`);
 }
 

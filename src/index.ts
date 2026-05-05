@@ -1,7 +1,7 @@
 import express from "express";
 import { createServer } from "http";
 import path from "path";
-import { Server, Socket } from "socket.io";
+import { Server } from "socket.io";
 import cors from "cors";
 import { promises as fs } from "fs";
 import { gameRouter } from "./game";
@@ -139,14 +139,6 @@ app.use(
     res.status(500).json({ error: "Internal server error" });
   },
 );
-
-io.on("connection", (socket: Socket) => {
-  console.log(`Client connected: ${socket.id}`);
-
-  socket.on("disconnect", () => {
-    console.log(`Client disconnected: ${socket.id}`);
-  });
-});
 
 registerLobbySocket(io);
 

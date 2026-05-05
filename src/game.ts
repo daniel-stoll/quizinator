@@ -1,4 +1,6 @@
+import { existsSync } from "fs";
 import { Router } from "express";
+import path from "path";
 
 interface AnswerSubmission {
   questionIndex: number;
@@ -19,6 +21,13 @@ interface QuestionResult {
 const store = new Map<string, Map<number, Map<number, number>>>();
 
 const router = Router();
+
+// GET /game/:quizId — player lobby page
+router.get("/:quizId", (_req, res) => {
+  const builtGamePage = path.join(process.cwd(), "dist", "public", "game.html");
+  const devGamePage = path.join(process.cwd(), "game.html");
+  res.sendFile(existsSync(builtGamePage) ? builtGamePage : devGamePage);
+});
 
 // POST /game/:quizId/answer — submit an answer for a question
 router.post("/:quizId/answer", (req, res) => {

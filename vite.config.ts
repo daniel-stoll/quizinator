@@ -12,12 +12,14 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, "index.html"),
         editor: resolve(__dirname, "editor.html"),
+        game: resolve(__dirname, "game.html"),
       },
     },
   },
   server: {
     proxy: {
       "/store": "http://localhost:3000",
+      "/game": "http://localhost:3000",
       "/socket.io": {
         target: "http://localhost:3000",
         ws: true,
