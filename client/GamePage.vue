@@ -45,7 +45,7 @@ const isMultipleChoice = computed(
 );
 const canSubmit = computed(() => {
     if (!currentQuestion.value || submitted.value) return false;
-    return isMultipleChoice.value ? selectedAnswer.value !== null : typedAnswer.value.trim().length > 0;
+    return isMultipleChoice.value ? selectedAnswer.value !== null : typedAnswer.value.length > 0;
 });
 
 function submitAnswer() {
@@ -56,7 +56,7 @@ function submitAnswer() {
         questionIndex: currentQuestion.value.index,
         ...(isMultipleChoice.value
             ? { answerIndex: selectedAnswer.value }
-            : { answerValue: typedAnswer.value.trim() }),
+            : { answerValue: typedAnswer.value }),
     });
 }
 

@@ -169,7 +169,7 @@ function registerLobbySocket(io: Server) {
         if (!lobby || lobby.status !== "started") return;
         if (questionIndex !== lobby.currentQuestionIndex) return;
 
-        const answerKey = answerIndex !== undefined ? String(answerIndex) : String(answerValue ?? "").trim();
+        const answerKey = answerIndex !== undefined ? String(answerIndex) : String(answerValue ?? "");
         if (!answerKey) return;
 
         const answered = lobby.answeredByQuestion[questionIndex] ?? new Set<string>();
