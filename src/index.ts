@@ -12,7 +12,8 @@ const io = new Server(httpServer, {
   },
 });
 
-const PORT = process.env.PORT ?? 3000;
+const PORT = Number(process.env.PORT ?? 3000);
+const HOST = process.env.HOST ?? "0.0.0.0";
 
 app.use(express.json());
 
@@ -28,8 +29,8 @@ io.on("connection", (socket: Socket) => {
   });
 });
 
-httpServer.listen(PORT, () => {
-  console.log(`Server is listening on port ${PORT}`);
+httpServer.listen(PORT, HOST, () => {
+  console.log(`Server is listening on http://${HOST}:${PORT}`);
 });
 
 export { app, io };
