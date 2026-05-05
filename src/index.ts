@@ -64,6 +64,10 @@ app.get("/editor", (_req, res) => {
   res.sendFile(path.join(publicDir, "editor.html"));
 });
 
+app.get("/join/:lobbyId", (_req, res) => {
+  res.sendFile(path.join(publicDir, "index.html"));
+});
+
 // POST /store — save a JSON body to disk, using the id from the JSON
 app.post(
   "/store",
