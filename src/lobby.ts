@@ -13,8 +13,11 @@ interface Answer {
   correct?: boolean;
 }
 
+type QuestionType = "multiple_choice" | "closest_guess" | "free_text";
+
 interface Question {
   question: string;
+  type?: QuestionType;
   answers?: Answer[];
 }
 
@@ -27,6 +30,7 @@ interface PublicQuestion {
   index: number;
   total: number;
   question: string;
+  type: QuestionType;
   answers: { text: string }[];
 }
 
@@ -36,7 +40,7 @@ interface Lobby {
   users: LobbyUser[];
   status: "waiting" | "started" | "finished";
   currentQuestionIndex: number;
-  answerCounts: Record<number, Record<number, number>>;
+  answerCounts: Record<number, Record<string, number>>;
   answeredByQuestion: Record<number, Set<string>>;
 }
 
@@ -150,10 +154,23 @@ function registerLobbySocket(io: Server) {
 
     socket.on(
       "submit-answer",
-      ({ lobbyId, questionIndex, answerIndex }: { lobbyId: string; questionIndex: number; answerIndex: number }) => {
+      ({
+        lobbyId,
+        questionIndex,
+        answerIndex,
+        answerValue,
+      }: {
+        lobbyId: string;
+        questionIndex: number;
+        answerIndex?: number;
+        answerValue?: string | number;
+      }) => {
         const lobby = lobbies.get(lobbyId);
         if (!lobby || lobby.status !== "started") return;
         if (questionIndex !== lobby.currentQuestionIndex) return;
+
+        const answerKey = answerIndex !== undefined ? String(answerIndex) : String(answerValue ?? "").trim();
+        if (!answerKey) return;
 
         const answered = lobby.answeredByQuestion[questionIndex] ?? new Set<string>();
         if (answered.has(socket.id)) return;
@@ -161,10 +178,10 @@ function registerLobbySocket(io: Server) {
         lobby.answeredByQuestion[questionIndex] = answered;
 
         const counts = lobby.answerCounts[questionIndex] ?? {};
-        counts[answerIndex] = (counts[answerIndex] ?? 0) + 1;
+        counts[answerKey] = (counts[answerKey] ?? 0) + 1;
         lobby.answerCounts[questionIndex] = counts;
 
-        socket.emit("answer:accepted", { questionIndex, answerIndex });
+        socket.emit("answer:accepted", { questionIndex, answerIndex, answerValue });
         emitResults(lobbyIo, lobbyId);
       },
     );
@@ -194,6 +211,7 @@ function toPublicQuestion(quiz: Quiz, index: number): PublicQuestion {
     index,
     total: quiz.questions.length,
     question: question.question,
+    type: question.type ?? "multiple_choice",
     answers: (question.answers ?? []).map((answer) => ({ text: answer.text })),
   };
 }

@@ -14,16 +14,19 @@ type LobbyUpdate = {
     players: number;
 };
 
+type QuestionType = "multiple_choice" | "closest_guess" | "free_text";
+
 type PublicQuestion = {
     index: number;
     total: number;
     question: string;
+    type: QuestionType;
     answers: { text: string }[];
 };
 
 type QuizResults = {
     questionIndex: number;
-    answers: Record<number, number>;
+    answers: Record<string, number>;
     answered: number;
     players: number;
 };
@@ -164,8 +167,12 @@ function nextQuestion() {
     socket?.emit("next-question", { lobbyId: activeLobbyId.value });
 }
 
+const submittedAnswerEntries = computed(() =>
+    Object.entries(currentResults.value?.answers ?? {}).sort(([a], [b]) => a.localeCompare(b)),
+);
+
 function answerCount(index: number) {
-    return currentResults.value?.answers[index] ?? 0;
+    return currentResults.value?.answers[String(index)] ?? 0;
 }
 
 async function loadAvailableQuizzes() {
@@ -355,7 +362,7 @@ onUnmounted(() => {
                 <p class="mb-4 text-slate-500">
                     {{ currentResults?.answered ?? 0 }} / {{ playerCount }} answered
                 </p>
-                <ol class="grid gap-3">
+                <ol v-if="currentQuestion.answers.length" class="grid gap-3">
                     <li
                         v-for="(answer, index) in currentQuestion.answers"
                         :key="`${answer.text}-${index}`"
@@ -363,6 +370,16 @@ onUnmounted(() => {
                     >
                         {{ answer.text }}
                         <span class="float-right text-blue-600">{{ answerCount(index) }}</span>
+                    </li>
+                </ol>
+                <ol v-else class="grid gap-3">
+                    <li
+                        v-for="([answer, count]) in submittedAnswerEntries"
+                        :key="answer"
+                        class="rounded-2xl bg-white p-4 font-bold text-slate-900"
+                    >
+                        {{ answer }}
+                        <span class="float-right text-blue-600">{{ count }}</span>
                     </li>
                 </ol>
             </div>

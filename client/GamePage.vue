@@ -7,10 +7,13 @@ type LobbyUpdate = {
     players: number;
 };
 
+type QuestionType = "multiple_choice" | "closest_guess" | "free_text";
+
 type PublicQuestion = {
     index: number;
     total: number;
     question: string;
+    type: QuestionType;
     answers: { text: string }[];
 };
 
@@ -33,16 +36,27 @@ const playerCount = ref(0);
 const status = ref("Joining lobby...");
 const currentQuestion = ref<PublicQuestion | null>(null);
 const selectedAnswer = ref<number | null>(null);
+const typedAnswer = ref("");
 const submitted = ref(false);
 let socket: SocketClient | null = null;
 
+const isMultipleChoice = computed(
+    () => (currentQuestion.value?.type ?? "multiple_choice") === "multiple_choice",
+);
+const canSubmit = computed(() => {
+    if (!currentQuestion.value || submitted.value) return false;
+    return isMultipleChoice.value ? selectedAnswer.value !== null : typedAnswer.value.trim().length > 0;
+});
+
 function submitAnswer() {
-    if (!currentQuestion.value || selectedAnswer.value === null || submitted.value) return;
+    if (!currentQuestion.value || !canSubmit.value) return;
 
     socket?.emit("submit-answer", {
         lobbyId: lobbyId.value,
         questionIndex: currentQuestion.value.index,
-        answerIndex: selectedAnswer.value,
+        ...(isMultipleChoice.value
+            ? { answerIndex: selectedAnswer.value }
+            : { answerValue: typedAnswer.value.trim() }),
     });
 }
 
@@ -64,6 +78,7 @@ onMounted(() => {
     socket.on("quiz:question", (payload: PublicQuestion) => {
         currentQuestion.value = payload;
         selectedAnswer.value = null;
+        typedAnswer.value = "";
         submitted.value = false;
         status.value = "Choose your answer.";
     });
@@ -106,7 +121,7 @@ onUnmounted(() => {
                     {{ currentQuestion.question }}
                 </h2>
 
-                <div class="grid gap-3">
+                <div v-if="isMultipleChoice" class="grid gap-3">
                     <label
                         v-for="(answer, index) in currentQuestion.answers"
                         :key="`${answer.text}-${index}`"
@@ -125,10 +140,23 @@ onUnmounted(() => {
                     </label>
                 </div>
 
+                <label v-else class="grid gap-2 font-bold">
+                    <span>{{ currentQuestion.type === "closest_guess" ? "Your guess" : "Your answer" }}</span>
+                    <input
+                        v-model="typedAnswer"
+                        class="field-control font-normal"
+                        :type="currentQuestion.type === 'closest_guess' ? 'number' : 'text'"
+                        :step="currentQuestion.type === 'closest_guess' ? 'any' : undefined"
+                        :placeholder="currentQuestion.type === 'closest_guess' ? 'Enter a number' : 'Type your answer'"
+                        :disabled="submitted"
+                        @keydown.enter.prevent="submitAnswer"
+                    />
+                </label>
+
                 <button
                     type="button"
                     class="button button-primary mt-6 w-full"
-                    :disabled="selectedAnswer === null || submitted"
+                    :disabled="!canSubmit"
                     @click="submitAnswer"
                 >
                     {{ submitted ? "Submitted" : "Submit answer" }}
