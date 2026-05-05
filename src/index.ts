@@ -1,5 +1,6 @@
 import express from "express";
 import { createServer } from "http";
+import path from "path";
 import { Server, Socket } from "socket.io";
 
 const app = express();
@@ -13,11 +14,21 @@ const io = new Server(httpServer, {
 });
 
 const PORT = process.env.PORT ?? 3000;
+const publicDir = path.join(process.cwd(), "dist", "public");
 
 app.use(express.json());
+app.use(express.static(publicDir));
 
 app.get("/", (_req, res) => {
-  res.send("Quizinator server is running");
+  res.sendFile(path.join(publicDir, "index.html"));
+});
+
+app.get("/admin", (_req, res) => {
+  res.sendFile(path.join(publicDir, "index.html"));
+});
+
+app.get("/editor", (_req, res) => {
+  res.sendFile(path.join(publicDir, "editor.html"));
 });
 
 io.on("connection", (socket: Socket) => {
