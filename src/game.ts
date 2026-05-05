@@ -1,11 +1,7 @@
 import { existsSync } from "fs";
 import { Router } from "express";
 import path from "path";
-
-interface AnswerSubmission {
-  questionIndex: number;
-  answerIndex: number;
-}
+import { Namespace, Server, Socket } from "socket.io";
 
 interface AnswerTally {
   answerIndex: number;
@@ -17,7 +13,7 @@ interface QuestionResult {
   answers: AnswerTally[];
 }
 
-// In-memory store: quizId -> questionIndex -> answerIndex -> count
+// In-memory store: lobbyId -> questionIndex -> answerIndex -> count
 const store = new Map<string, Map<number, Map<number, number>>>();
 
 const router = Router();
@@ -29,54 +25,78 @@ router.get("/:quizId", (_req, res) => {
   res.sendFile(existsSync(builtGamePage) ? builtGamePage : devGamePage);
 });
 
-// POST /game/:quizId/answer — submit an answer for a question
-router.post("/:quizId/answer", (req, res) => {
-  const { quizId } = req.params;
-  const { questionIndex, answerIndex } = req.body as AnswerSubmission;
+function getResults(lobbyId: string): QuestionResult[] {
+  const lobby = store.get(lobbyId);
+  if (!lobby) return [];
 
-  if (questionIndex === undefined || answerIndex === undefined) {
-    res.status(400).json({ error: "questionIndex and answerIndex are required" });
-    return;
-  }
+  return [...lobby.entries()]
+    .map(([questionIndex, answers]) => ({
+      questionIndex,
+      answers: [...answers.entries()].map(([answerIndex, count]) => ({
+        answerIndex,
+        count,
+      })),
+    }))
+    .sort((a, b) => a.questionIndex - b.questionIndex);
+}
 
-  if (!store.has(quizId)) {
-    store.set(quizId, new Map());
-  }
-  const quiz = store.get(quizId)!;
+function emitResults(gameIo: Namespace, lobbyId: string) {
+  gameIo.to(lobbyId).emit("game:results", {
+    lobbyId,
+    results: getResults(lobbyId),
+  });
+}
 
-  if (!quiz.has(questionIndex)) {
-    quiz.set(questionIndex, new Map());
-  }
-  const question = quiz.get(questionIndex)!;
+function registerGameSocket(io: Server) {
+  const gameIo = io.of("/game");
 
-  question.set(answerIndex, (question.get(answerIndex) ?? 0) + 1);
+  gameIo.on("connection", (socket: Socket) => {
+    // watch-game: host joins room to receive live result updates
+    // { lobbyId }
+    socket.on("watch-game", ({ lobbyId }: { lobbyId: string }) => {
+      socket.join(lobbyId);
+      emitResults(gameIo, lobbyId);
+      console.log(`[Game] ${socket.id} watching lobby ${lobbyId}`);
+    });
 
-  res.status(201).json({ message: "Answer recorded" });
-});
+    // submit-answer: player submits an answer
+    // { lobbyId, questionIndex, answerIndex }
+    socket.on(
+      "submit-answer",
+      ({
+        lobbyId,
+        questionIndex,
+        answerIndex,
+      }: {
+        lobbyId: string;
+        questionIndex: number;
+        answerIndex: number;
+      }) => {
+        if (lobbyId === undefined || questionIndex === undefined || answerIndex === undefined) {
+          socket.emit("game:error", {
+            message: "lobbyId, questionIndex and answerIndex are required",
+          });
+          return;
+        }
 
-// GET /game/:quizId/results — get answer tallies for all questions in a quiz
-router.get("/:quizId/results", (req, res) => {
-  const { quizId } = req.params;
+        if (!store.has(lobbyId)) store.set(lobbyId, new Map());
+        const lobby = store.get(lobbyId)!;
 
-  if (!store.has(quizId)) {
-    res.status(404).json({ error: "No answers found for this quiz" });
-    return;
-  }
+        if (!lobby.has(questionIndex)) lobby.set(questionIndex, new Map());
+        const question = lobby.get(questionIndex)!;
 
-  const quiz = store.get(quizId)!;
-  const results: QuestionResult[] = [];
+        question.set(answerIndex, (question.get(answerIndex) ?? 0) + 1);
 
-  for (const [questionIndex, answers] of quiz.entries()) {
-    const tally: AnswerTally[] = [];
-    for (const [answerIndex, count] of answers.entries()) {
-      tally.push({ answerIndex, count });
-    }
-    results.push({ questionIndex, answers: tally });
-  }
+        socket.emit("game:answer-recorded", { questionIndex, answerIndex });
+        emitResults(gameIo, lobbyId);
 
-  results.sort((a, b) => a.questionIndex - b.questionIndex);
+        console.log(
+          `[Game] lobby=${lobbyId} q=${questionIndex} a=${answerIndex} (total: ${question.get(answerIndex)})`,
+        );
+      },
+    );
+  });
+}
 
-  res.json(results);
-});
+export { router as gameRouter, registerGameSocket };
 
-export { router as gameRouter };

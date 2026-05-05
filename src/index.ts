@@ -5,6 +5,7 @@ import { Server } from "socket.io";
 import cors from "cors";
 import { promises as fs } from "fs";
 import { gameRouter } from "./game";
+import { registerGameSocket } from "./game";
 import { lobbyRouter, registerLobbySocket } from "./lobby";
 
 interface Answer {
@@ -145,6 +146,7 @@ app.use(
 );
 
 registerLobbySocket(io);
+registerGameSocket(io);
 
 httpServer.listen(PORT, () => {
   console.log(`Server is listening on port ${PORT}`);
