@@ -14,9 +14,23 @@ type LobbyUpdate = {
     players: number;
 };
 
+type PublicQuestion = {
+    index: number;
+    total: number;
+    question: string;
+    answers: { text: string }[];
+};
+
+type QuizResults = {
+    questionIndex: number;
+    answers: Record<number, number>;
+    answered: number;
+    players: number;
+};
+
 type SocketClient = {
     emit: (event: string, payload?: unknown) => void;
-    on: (event: string, handler: (payload: LobbyUpdate) => void) => void;
+    on: (event: string, handler: (payload: any) => void) => void;
     disconnect: () => void;
 };
 
@@ -33,6 +47,9 @@ const activeLobbyQuiz = ref<QuizSummary | null>(null);
 const activeLobbyId = ref("");
 const playerCount = ref(0);
 const lobbyStatus = ref("Joining lobby...");
+const quizStarted = ref(false);
+const currentQuestion = ref<PublicQuestion | null>(null);
+const currentResults = ref<QuizResults | null>(null);
 let socket: SocketClient | null = null;
 let socketScriptPromise: Promise<void> | null = null;
 
@@ -76,6 +93,9 @@ async function startLobby(quiz: QuizSummary) {
     activeLobbyId.value = "";
     playerCount.value = 0;
     lobbyStatus.value = "Creating lobby...";
+    quizStarted.value = false;
+    currentQuestion.value = null;
+    currentResults.value = null;
     socket?.disconnect();
 
     try {
@@ -94,10 +114,30 @@ async function startLobby(quiz: QuizSummary) {
         if (!window.io) throw new Error("Socket.IO client unavailable.");
 
         socket = window.io(`${API_URL}/lobby`);
-        socket.on("lobby:update", (payload) => {
+        socket.on("lobby:update", (payload: LobbyUpdate) => {
             if (payload.lobbyId !== activeLobbyId.value) return;
             playerCount.value = payload.players;
             lobbyStatus.value = "Lobby ready. Share the link with players.";
+        });
+        socket.on("quiz:started", () => {
+            quizStarted.value = true;
+            lobbyStatus.value = "Quiz running.";
+        });
+        socket.on("quiz:question", (payload: PublicQuestion) => {
+            quizStarted.value = true;
+            currentQuestion.value = payload;
+            currentResults.value = null;
+        });
+        socket.on("quiz:results", (payload: QuizResults) => {
+            currentResults.value = payload;
+        });
+        socket.on("quiz:finished", () => {
+            quizStarted.value = false;
+            currentQuestion.value = null;
+            lobbyStatus.value = "Quiz finished.";
+        });
+        socket.on("quiz:error", (payload: { message: string }) => {
+            lobbyStatus.value = payload.message;
         });
         socket.emit("watch-lobby", { lobbyId: activeLobbyId.value });
     } catch {
@@ -111,6 +151,21 @@ function leaveLobby() {
     activeLobbyQuiz.value = null;
     activeLobbyId.value = "";
     playerCount.value = 0;
+    quizStarted.value = false;
+    currentQuestion.value = null;
+    currentResults.value = null;
+}
+
+function startQuiz() {
+    socket?.emit("start-quiz", { lobbyId: activeLobbyId.value });
+}
+
+function nextQuestion() {
+    socket?.emit("next-question", { lobbyId: activeLobbyId.value });
+}
+
+function answerCount(index: number) {
+    return currentResults.value?.answers[index] ?? 0;
 }
 
 async function loadAvailableQuizzes() {
@@ -269,6 +324,47 @@ onUnmounted(() => {
                     </a>
                     <p class="mt-2 text-sm text-slate-500">Path: {{ lobbyPath }}</p>
                 </div>
+            </div>
+
+            <div class="mt-6 flex gap-3 max-sm:flex-col">
+                <button
+                    type="button"
+                    class="button button-primary max-sm:w-full"
+                    :disabled="quizStarted"
+                    @click="startQuiz"
+                >
+                    Start quiz
+                </button>
+                <button
+                    type="button"
+                    class="button button-secondary max-sm:w-full"
+                    :disabled="!currentQuestion"
+                    @click="nextQuestion"
+                >
+                    Next question
+                </button>
+            </div>
+
+            <div v-if="currentQuestion" class="mt-6 rounded-3xl border border-slate-200 bg-slate-50 p-6">
+                <p class="mb-2 text-sm font-bold uppercase tracking-[0.12em] text-blue-600">
+                    Question {{ currentQuestion.index + 1 }} / {{ currentQuestion.total }}
+                </p>
+                <h3 class="mb-4 text-2xl font-black text-slate-950">
+                    {{ currentQuestion.question }}
+                </h3>
+                <p class="mb-4 text-slate-500">
+                    {{ currentResults?.answered ?? 0 }} / {{ playerCount }} answered
+                </p>
+                <ol class="grid gap-3">
+                    <li
+                        v-for="(answer, index) in currentQuestion.answers"
+                        :key="`${answer.text}-${index}`"
+                        class="rounded-2xl bg-white p-4 font-bold text-slate-900"
+                    >
+                        {{ answer.text }}
+                        <span class="float-right text-blue-600">{{ answerCount(index) }}</span>
+                    </li>
+                </ol>
             </div>
 
             <img
